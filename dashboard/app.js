@@ -1,10 +1,13 @@
 (function () {
   var ORDER = ["coding_agents", "skills_plugins", "memory_context", "white_collar", "evals"];
-  var FAV_KEY = "first-project-favs";
+  var USER_KEY = "agent-watch-username";
+  var LEGACY_FAV_KEY = "first-project-favs";
+  var FAV_KEY_PREFIX = "agent-watch-favs:";
   var active = "all";
   var query = "";
   var data = null;
   var favs = [];
+  var username = "";
 
   function el(id) { return document.getElementById(id); }
 
@@ -34,7 +37,7 @@
   function totalCount() {
     var n = 0;
     ORDER.forEach(function (id) {
-      var b = data.buckets && data.buckets[id];
+      var b = data && data.buckets && data.buckets[id];
       if (b && Array.isArray(b.items)) n += b.items.length;
     });
     return n;
@@ -48,56 +51,184 @@
 
   function cleanFavs(arr) {
     if (!Array.isArray(arr)) return null;
-    return arr.filter(function (x) { return typeof x === "string" && x.length; });
+    var seen = {};
+    return arr.filter(function (x) {
+      if (typeof x !== "string" || !x || seen[x]) return false;
+      seen[x] = true;
+      return true;
+    });
   }
 
-  function getEmbeddedFavs() {
+  function normalizeUsername(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function validUsername(value) {
+    return /^[a-z0-9._-]{1,32}$/.test(value);
+  }
+
+  function favStorageKey() {
+    return FAV_KEY_PREFIX + username;
+  }
+
+  function loadStoredUsername() {
     try {
-      if (Array.isArray(window.__WATCH_FAVS__)) return cleanFavs(window.__WATCH_FAVS__);
-    } catch (e) {}
-    return null;
+      var value = normalizeUsername(window.localStorage.getItem(USER_KEY));
+      return validUsername(value) ? value : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function saveUsername(value) {
+    try { window.localStorage.setItem(USER_KEY, value); } catch (e) {}
   }
 
   function loadLocalFavs() {
+    var local = null;
     try {
-      var raw = window.localStorage.getItem(FAV_KEY);
-      if (!raw) return null;
-      return cleanFavs(JSON.parse(raw));
-    } catch (e) { return null; }
-  }
+      var raw = window.localStorage.getItem(favStorageKey());
+      if (raw) local = cleanFavs(JSON.parse(raw));
+    } catch (e) {}
+    if (local) return local;
 
-  function loadFavs() {
-    var emb = getEmbeddedFavs();
-    if (emb) { favs = emb; return; }
-    var local = loadLocalFavs();
-    favs = local || [];
+    // One-time migration from the old browser-wide favorites cache.
+    try {
+      var legacy = window.localStorage.getItem(LEGACY_FAV_KEY);
+      if (legacy) {
+        local = cleanFavs(JSON.parse(legacy));
+        if (local) {
+          window.localStorage.setItem(favStorageKey(), JSON.stringify(local));
+          return local;
+        }
+      }
+    } catch (e) {}
+
+    return [];
   }
 
   function saveFavs() {
-    try { window.localStorage.setItem(FAV_KEY, JSON.stringify(favs)); } catch (e) {}
+    if (!username) return;
+    try { window.localStorage.setItem(favStorageKey(), JSON.stringify(favs)); } catch (e) {}
   }
 
-  function persistFavsRemote() {
-    try {
-      fetch("/api/favs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ favs: favs })
-      }).catch(function () {});
-    } catch (e) {}
+  function syncConfig() {
+    var cfg = window.__SYNC_CONFIG__ || {};
+    var url = String(cfg.supabaseUrl || "").replace(/\/+$/, "");
+    var key = String(cfg.supabaseKey || cfg.supabaseAnonKey || "");
+    return {
+      url: url,
+      key: key,
+      enabled: /^https:\/\/.+\.supabase\.co$/i.test(url) && !!key && key.indexOf("YOUR_") !== 0
+    };
   }
 
-  function fetchLiveFavs() {
-    fetch("/api/favs", { cache: "no-store" })
-      .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
-      .then(function (j) {
-        var arr = j && cleanFavs(j.favs);
-        if (!arr) return;
-        favs = arr;
+  function setSyncStatus(text, state) {
+    var node = el("sync-status");
+    if (!node) return;
+    node.textContent = text;
+    node.setAttribute("data-state", state || "");
+  }
+
+  function remoteHeaders(extra) {
+    var cfg = syncConfig();
+    var h = {
+      "apikey": cfg.key,
+      "Content-Type": "application/json"
+    };
+    Object.keys(extra || {}).forEach(function (k) { h[k] = extra[k]; });
+    return h;
+  }
+
+  function remoteFavoritesUrl(extraQuery) {
+    var cfg = syncConfig();
+    return cfg.url + "/rest/v1/favorites" + (extraQuery || "");
+  }
+
+  function fetchRemoteFavs() {
+    var cfg = syncConfig();
+    if (!cfg.enabled || !username) {
+      setSyncStatus("Local only", "local");
+      return Promise.resolve(null);
+    }
+
+    setSyncStatus("Syncing…", "syncing");
+    var q = "?username=eq." + encodeURIComponent(username) + "&select=repo&order=created_at.asc";
+    return fetch(remoteFavoritesUrl(q), {
+      method: "GET",
+      headers: remoteHeaders(),
+      cache: "no-store"
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("favorites fetch failed: " + r.status);
+        return r.json();
+      })
+      .then(function (rows) {
+        var remote = cleanFavs((rows || []).map(function (row) { return row.repo; })) || [];
+
+        // If this username has never been synced, seed it from the local cache.
+        if (!remote.length && favs.length) {
+          return seedRemoteFavs(favs).then(function () {
+            setSyncStatus("Synced", "ok");
+            return favs;
+          });
+        }
+
+        favs = remote;
         saveFavs();
         refreshFavoritesLane();
+        setSyncStatus("Synced", "ok");
+        return remote;
       })
-      .catch(function () {});
+      .catch(function () {
+        setSyncStatus("Using local cache", "error");
+        return null;
+      });
+  }
+
+  function seedRemoteFavs(items) {
+    var cfg = syncConfig();
+    if (!cfg.enabled || !username || !items.length) return Promise.resolve();
+    var body = items.map(function (repo) { return { username: username, repo: repo }; });
+    var q = "?on_conflict=username,repo";
+    return fetch(remoteFavoritesUrl(q), {
+      method: "POST",
+      headers: remoteHeaders({ "Prefer": "resolution=ignore-duplicates,return=minimal" }),
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) throw new Error("favorites seed failed: " + r.status);
+    });
+  }
+
+  function persistFavChange(name, nowFavorite) {
+    var cfg = syncConfig();
+    if (!cfg.enabled || !username) {
+      setSyncStatus("Local only", "local");
+      return;
+    }
+
+    setSyncStatus("Syncing…", "syncing");
+    var req;
+    if (nowFavorite) {
+      req = fetch(remoteFavoritesUrl("?on_conflict=username,repo"), {
+        method: "POST",
+        headers: remoteHeaders({ "Prefer": "resolution=ignore-duplicates,return=minimal" }),
+        body: JSON.stringify({ username: username, repo: name })
+      });
+    } else {
+      var q = "?username=eq." + encodeURIComponent(username) + "&repo=eq." + encodeURIComponent(name);
+      req = fetch(remoteFavoritesUrl(q), {
+        method: "DELETE",
+        headers: remoteHeaders({ "Prefer": "return=minimal" })
+      });
+    }
+
+    req.then(function (r) {
+      if (!r.ok) throw new Error("favorites write failed: " + r.status);
+      setSyncStatus("Synced", "ok");
+    }).catch(function () {
+      setSyncStatus("Saved locally", "error");
+    });
   }
 
   function isFav(name) {
@@ -139,7 +270,7 @@
       var name = it.full_name || "(unnamed)";
       var desc = String(it.description || "").replace(/\s+/g, " ").trim();
       var url = it.html_url || ("https://github.com/" + name);
-      lines.push("- " + name + (desc ? " \u2014 " + desc : ""));
+      lines.push("- " + name + (desc ? " — " + desc : ""));
       lines.push("  " + url);
     });
     return lines.join("\n");
@@ -175,10 +306,16 @@
   function toggleFav(name) {
     if (!name) return;
     var i = favs.indexOf(name);
-    if (i === -1) favs.push(name);
-    else favs.splice(i, 1);
+    var nowFavorite;
+    if (i === -1) {
+      favs.push(name);
+      nowFavorite = true;
+    } else {
+      favs.splice(i, 1);
+      nowFavorite = false;
+    }
     saveFavs();
-    persistFavsRemote();
+    persistFavChange(name, nowFavorite);
     updateFavStars(name);
     refreshFavoritesLane();
   }
@@ -194,6 +331,7 @@
   }
 
   function refreshFavoritesLane() {
+    if (!data) return;
     if (active === "favorites") { render(); return; }
     var chip = document.querySelector('.chip[data-id="favorites"]');
     if (chip) chip.textContent = "Favorites" + (favs.length ? " (" + favs.length + ")" : "");
@@ -220,7 +358,7 @@
     }
     h += "</div>";
     if (!favs.length) {
-      h += '<p class="empty">No favorites yet. Tap the \u2606 on any repo to save it here.</p>';
+      h += '<p class="empty">No favorites yet. Tap the ☆ on any repo to save it here.</p>';
     } else if (!items.length) {
       h += '<p class="empty">No matching favorites.</p>';
     } else {
@@ -294,7 +432,14 @@
     });
   }
 
+  function renderUser() {
+    var label = el("user-label");
+    if (label) label.textContent = username ? "@" + username : "Choose username";
+  }
+
   function render() {
+    if (!data) return;
+    renderUser();
     var meta = el("meta");
     meta.innerHTML = fmtRanked(data.ranked_at) + " · " + totalCount() + " repos";
     var chips = el("chips");
@@ -306,8 +451,7 @@
     });
     html += '<button class="chip" data-id="favorites" aria-selected="' + (active === "favorites") + '">Favorites' + (favs.length ? " (" + favs.length + ")" : "") + "</button>";
     chips.innerHTML = html;
-    var btns = chips.querySelectorAll(".chip");
-    btns.forEach(function (btn) {
+    chips.querySelectorAll(".chip").forEach(function (btn) {
       btn.addEventListener("click", function () {
         active = btn.getAttribute("data-id");
         render();
@@ -323,23 +467,17 @@
       ORDER.filter(function (id) { return data.buckets && data.buckets[id]; }).forEach(function (id) {
         var b = data.buckets[id];
         var items = (b.items || []).filter(matches);
-        parts.push("<h2 class=\"lane\">" + esc(b.title || id) + "</h2>");
-        if (!items.length) {
-          parts.push('<p class="empty">No repos in this lane right now.</p>');
-        } else {
-          parts.push(items.map(card).join(""));
-        }
+        parts.push('<h2 class="lane">' + esc(b.title || id) + "</h2>");
+        if (!items.length) parts.push('<p class="empty">No repos in this lane right now.</p>');
+        else parts.push(items.map(card).join(""));
       });
     } else {
       var b = data.buckets[active];
       if (b) {
         var items = (b.items || []).filter(matches);
-        parts.push("<h2 class=\"lane\">" + esc(b.title || active) + "</h2>");
-        if (!items.length) {
-          parts.push('<p class="empty">No repos in this lane right now.</p>');
-        } else {
-          parts.push(items.map(card).join(""));
-        }
+        parts.push('<h2 class="lane">' + esc(b.title || active) + "</h2>");
+        if (!items.length) parts.push('<p class="empty">No repos in this lane right now.</p>');
+        else parts.push(items.map(card).join(""));
       }
     }
     out.innerHTML = parts.join("") || '<p class="empty">No repos in this lane right now.</p>';
@@ -354,28 +492,89 @@
     el("content").innerHTML = '<p class="notice">No ranked data yet</p>';
   }
 
-  function init() {
-    loadFavs();
-    el("search").addEventListener("input", function (e) {
-      query = (e.target.value || "").trim().toLowerCase();
-      if (data) render();
-    });
+  function loadData() {
     if (window.__WATCH_DATA__) {
       data = window.__WATCH_DATA__;
       if (!data || !data.buckets || !Object.keys(data.buckets).length) { fail(); return; }
       render();
-      fetchLiveFavs();
+      fetchRemoteFavs();
       return;
     }
-    fetch("../data/ranked/latest.json", { cache: "no-store" })
-      .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
-      .then(function (j) {
-        data = j;
-        if (!data || !data.buckets || !Object.keys(data.buckets).length) { fail(); return; }
-        render();
-        fetchLiveFavs();
-      })
-      .catch(fail);
+
+    function tryFetch(paths, index) {
+      if (index >= paths.length) { fail(); return; }
+      fetch(paths[index], { cache: "no-store" })
+        .then(function (r) { if (!r.ok) throw new Error("bad"); return r.json(); })
+        .then(function (j) {
+          data = j;
+          if (!data || !data.buckets || !Object.keys(data.buckets).length) { fail(); return; }
+          render();
+          fetchRemoteFavs();
+        })
+        .catch(function () { tryFetch(paths, index + 1); });
+    }
+
+    // Pages publishes dashboard assets at the site root; local dev serves /dashboard/.
+    tryFetch(["data/ranked/latest.json", "../data/ranked/latest.json"], 0);
+  }
+
+  function hideLogin() {
+    var screen = el("login-screen");
+    if (screen) screen.hidden = true;
+  }
+
+  function showLogin() {
+    var screen = el("login-screen");
+    var input = el("username-input");
+    var err = el("login-error");
+    if (err) err.textContent = "";
+    if (input) input.value = username || "";
+    if (screen) screen.hidden = false;
+    setTimeout(function () { if (input) { input.focus(); input.select(); } }, 0);
+  }
+
+  function startForUser(value) {
+    username = normalizeUsername(value);
+    saveUsername(username);
+    favs = loadLocalFavs();
+    active = "all";
+    renderUser();
+    hideLogin();
+    if (data) {
+      render();
+      fetchRemoteFavs();
+    } else {
+      loadData();
+    }
+  }
+
+  function bindLogin() {
+    var form = el("login-form");
+    var userBtn = el("user-button");
+    if (userBtn) userBtn.addEventListener("click", showLogin);
+    if (!form) return;
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var value = normalizeUsername(el("username-input").value);
+      var err = el("login-error");
+      if (!validUsername(value)) {
+        if (err) err.textContent = "Use 1–32 letters, numbers, dots, underscores, or hyphens.";
+        return;
+      }
+      startForUser(value);
+    });
+  }
+
+  function init() {
+    bindLogin();
+    el("search").addEventListener("input", function (e) {
+      query = (e.target.value || "").trim().toLowerCase();
+      if (data) render();
+    });
+
+    var stored = loadStoredUsername();
+    if (stored) startForUser(stored);
+    else showLogin();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
