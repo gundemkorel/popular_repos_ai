@@ -36,4 +36,4 @@ The dashboard therefore works at:
 - Use the same username on another device to see the same favorites.
 - Clicking the username in the header lets you switch usernames.
 
-The old browser-local key (`first-project-favs`) and embedded legacy favorites snapshot are used only as migration fallbacks. If the new remote list is empty on first sync, cached favorites are seeded into Supabase.
+The old browser-local key (`first-project-favs`) is used as a one-time migration fallback for the username on that device. If the remote list is empty on first sync, those cached favorites are seeded into Supabase.
