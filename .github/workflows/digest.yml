@@ -41,5 +41,5 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git commit -m "chore: agent watch digest [skip ci]"
+          git commit -m "chore: agent watch digest"
           git push
