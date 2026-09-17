@@ -84,13 +84,6 @@
     try { window.localStorage.setItem(USER_KEY, value); } catch (e) {}
   }
 
-  function getEmbeddedFavs() {
-    try {
-      if (Array.isArray(window.__WATCH_FAVS__)) return cleanFavs(window.__WATCH_FAVS__);
-    } catch (e) {}
-    return null;
-  }
-
   function loadLocalFavs() {
     var local = null;
     try {
@@ -111,9 +104,7 @@
       }
     } catch (e) {}
 
-    // Legacy project snapshot is only a fallback for the first migration.
-    var embedded = getEmbeddedFavs();
-    return embedded || [];
+    return [];
   }
 
   function saveFavs() {
@@ -175,7 +166,7 @@
       .then(function (rows) {
         var remote = cleanFavs((rows || []).map(function (row) { return row.repo; })) || [];
 
-        // If this username has never been synced, seed it from the local/legacy cache.
+        // If this username has never been synced, seed it from the local cache.
         if (!remote.length && favs.length) {
           return seedRemoteFavs(favs).then(function () {
             setSyncStatus("Synced", "ok");
