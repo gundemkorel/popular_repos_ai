@@ -1,28 +1,24 @@
-Update dashboard to add Favorites lane.
+# Favorites — historical note (deprecated implementation)
 
-Files:
-- app.js (add star toggle on card, Favorites lane, localStorage persistence, "Copy favorites as text" button)
-- styles.css (star button styling, favorites lane, copy button)
+This file originally specified the first browser-local Favorites feature. That design is **no longer the current production architecture**.
 
-Requirements:
-1. After "# Order" chips, show "Favorites" chip. When clicked, show favorites lane.
-2. Each repo card gets a star button in card-top (right side of name area). Click toggles favorite for that full_name.
-3. Favorites stored in localStorage key "first-project-favs" as array of full_name strings.
-4. If favorites exist, show Favorites lane as its own section. Favorites ordered by user add-order, newest first is fine.
-5. Favorites lane has a "Copy favorites as text" button. When clicked, builds a plain text block:
-   ```
-   # My Favorites (Copied YYYY-MM-DD)
-   - owner/name — description
-     https://github.com/owner/name
-   ```
-   Copies to clipboard and shows "Copied" for 2s. If no favorites: "No favorites yet" state.
-6. Star button uses ★ unicode or an SVG star icon; filled when favorite, outline when not.
-7. When favorites change, re-render to update chip active state? No — just toggle stars visually. But Favorites lane must refresh when favorites change.
-8. Keep existing card expand behavior for non-star clicks.
-9. Make sure star toggle works on mobile touch.
+Current behavior:
 
-Important: Favorites are stored in browser localStorage. They are local to the browser profile — not synced to Telegram or other browsers. A "Copy favorites" button exports them as text the user can paste into the chat.
+- favorites are keyed by username
+- localStorage is only the per-user cache / offline fallback
+- favorites sync across devices through Supabase
+- production is hosted on GitHub Pages
 
-After writing, verify it parses:
-  node -e "d=require('fs').readFileSync('/Users/korelgundem/Desktop/first-project/dashboard/app.js','utf8');new Function(d);console.log('app.js ok')"
-  node -e "d=require('fs').readFileSync('/Users/korelgundem/Desktop/first-project/dashboard/styles.css','utf8');console.log('css ok len',d.length)"
+Authoritative docs:
+
+- `AGENTS.md` — overall project handoff
+- `scripts/PAGES_SETUP.md` — Pages + Supabase operations
+- `scripts/DASHBOARD.md` — current dashboard architecture
+- `scripts/supabase_favorites.sql` — current remote favorites schema/policies
+
+Legacy detail retained for migration context:
+
+- the old browser-wide key was `first-project-favs`
+- current code may read that key once to migrate existing browser favorites into the selected username's per-user cache
+
+Do not reimplement favorites as browser-only storage unless explicitly requested.
