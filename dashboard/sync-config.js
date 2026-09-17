@@ -3,5 +3,5 @@
 // Never put a service_role or secret key here.
 window.__SYNC_CONFIG__ = {
   supabaseUrl: "https://ujtzapxhjpxnoiudzgzd.supabase.co",
-  supabaseKey: ""
+  supabaseKey: "sb_publishable_JdL_lL9lcUN59RsOQa7klw_lJAwTL5A"
 };
