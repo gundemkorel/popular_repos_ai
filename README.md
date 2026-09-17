@@ -94,6 +94,8 @@ Then open:
 
 GitHub Pages is configured to deploy through GitHub Actions. The Pages workflow publishes the dashboard at the site root and copies `data/ranked/latest.json` into the deployed artifact.
 
+The digest refresh runs every **48 hours**. The workflow is triggered daily at `00:00 UTC`, then an alternating-day cadence gate runs the expensive collection/ranking/build steps only on every second UTC day. Manual workflow dispatches always run immediately.
+
 The digest workflow commits refreshed `data/` and `dashboard/` outputs to `main`; that push triggers the Pages workflow so production stays current.
 
 Do not add `[skip ci]` to those generated digest commits, because doing so would suppress the Pages redeploy.
