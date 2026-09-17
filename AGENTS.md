@@ -85,7 +85,14 @@ Do not invent repos or fabricate ranked data. If ranked JSON is empty, treat tha
 
 ## Automation
 
-`.github/workflows/digest.yml` currently:
+`.github/workflows/digest.yml` refreshes the data on a true 48-hour cadence:
+
+- GitHub Actions triggers the workflow once per day at `00:00 UTC`.
+- A cadence gate computes the UTC Unix-day index and only runs the digest on alternating days.
+- This avoids the month-boundary bug of cron expressions such as `*/2` in the day-of-month field, which can produce a 24-hour gap between the last day of one month and the first day of the next.
+- `workflow_dispatch` bypasses the cadence gate and always runs immediately.
+
+When the cadence gate allows a run, the workflow:
 
 1. checks out the repo
 2. runs `scripts/collect.py`
@@ -95,7 +102,7 @@ Do not invent repos or fabricate ranked data. If ranked JSON is empty, treat tha
 
 `.github/workflows/pages.yml` then deploys the dashboard to GitHub Pages.
 
-Note: the comment in `digest.yml` says "Every 48 hours", but the current cron expression is `0 0,12 * * *` (twice daily). Do not assume the comment is authoritative; inspect the actual cron before changing scheduling behavior.
+GitHub scheduled workflows can start a little later than the nominal cron time under load, but the intended run slots are every 48 hours.
 
 ## Manual development
 
