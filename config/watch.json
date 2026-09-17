@@ -1,0 +1,104 @@
+{
+  "cadence_days": 2,
+  "per_bucket": 5,
+  "lookback_days": 90,
+  "created_within_days": 180,
+  "max_age_days": 180,
+  "min_stars": 20,
+  "mover_min_star_delta": 10,
+  "search_per_query": 25,
+  "seed_slots_per_bucket": 0,
+  "min_keyword_hits": 1,
+  "user_agent": "first-project-agent-watch/0.1 (personal digest)",
+  "buckets": [
+    {
+      "id": "coding_agents",
+      "title": "Coding agents / CLIs",
+      "queries": [
+        "\"coding agent\" OR \"agentic coding\" OR \"claude code\" OR opencode OR \"codex cli\" stars:>20",
+        "CLI hermes OR openclaw OR \"ai coding agent\" stars:>20"
+      ],
+      "keywords": [
+        "coding agent", "agentic coding", "claude-code", "claude code",
+        "opencode", "codex", "hermes", "coding cli", "openclaw"
+      ],
+      "negative_keywords": ["prompt dump", "system prompts"]
+    },
+    {
+      "id": "skills_plugins",
+      "title": "Skills / MCP",
+      "queries": [
+        "\"agent skills\" OR SKILL.md OR \"claude-code-plugin\" stars:>20",
+        "topic:mcp-server stars:>20"
+      ],
+      "keywords": [
+        "skill.md", "agent skills", "claude-code-plugin", "claude-code-skills",
+        "mcp-server", "mcp server", "mcp-client"
+      ],
+      "negative_keywords": []
+    },
+    {
+      "id": "memory_context",
+      "title": "Memory / context",
+      "queries": [
+        "\"agent memory\" OR \"memory layer\" OR mem0 OR letta stars:>15",
+        "\"session memory\" OR \"persistent memory\" OR \"persistent context\" OR graphrag stars:>15"
+      ],
+      "keywords": [
+        "mem0", "letta", "long-term memory", "agent memory", "agent-memory",
+        "memory layer", "session memory", "persistent memory", "vector memory",
+        "graphrag", "persistent context", "across sessions"
+      ],
+      "negative_keywords": ["taste-skill", "yagni"]
+    },
+    {
+      "id": "white_collar",
+      "title": "White-collar / productivity agents",
+      "queries": [
+        "AI agent email OR inbox OR calendar OR meeting stars:>20",
+        "\"research agent\" OR autoresearch OR \"deep-research\" OR \"knowledge work\" stars:>20"
+      ],
+      "keywords": [
+        "email", "inbox", "calendar", "meeting", "crm", "spreadsheet",
+        "knowledge work", "research agent", "docs agent", "productivity agent",
+        "osint", "news aggregation", "autoresearch", "deep-research",
+        "intelligence dashboard"
+      ],
+      "negative_keywords": []
+    },
+    {
+      "id": "evals",
+      "title": "Evals / benchmarks",
+      "queries": [
+        "\"agent eval\" OR \"llm eval\" OR \"agent evaluation\" OR \"eval harness\" stars:>15",
+        "swe-bench OR terminal-bench OR tau-bench OR \"agent bench\" stars:>15"
+      ],
+      "keywords": [
+        "swe-bench", "swe bench", "terminal-bench", "tau-bench", "agent-bench",
+        "agent eval", "llm eval", "eval harness", "evaluation harness",
+        "benchmark", "evals"
+      ],
+      "negative_keywords": ["leetcode", "interview prep"]
+    }
+  ],
+  "seed_repos": [],
+  "exclude_full_names": [
+    "NousResearch/hermes-agent",
+    "anthropics/claude-code",
+    "openai/codex",
+    "anomalyco/opencode",
+    "anthropics/skills",
+    "modelcontextprotocol/servers",
+    "mem0ai/mem0",
+    "letta-ai/letta"
+  ],
+  "exclude_name_substrings": [
+    "awesome-",
+    "clone",
+    "unofficial-mirror",
+    "star-history",
+    "system-prompts",
+    "claw-code",
+    "ai-agent-book"
+  ]
+}

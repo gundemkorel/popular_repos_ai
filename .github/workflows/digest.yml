@@ -1,0 +1,45 @@
+name: Agent GitHub watch digest
+
+on:
+  schedule:
+    # Every 48 hours
+    - cron: "0 0,12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.REPO_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Collect GitHub repos
+        run: python3 scripts/collect.py
+
+      - name: Rank repos
+        run: python3 scripts/rank.py
+
+      - name: Build dashboard
+        run: python3 scripts/build_dashboard.py
+
+      - name: Commit and push outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data dashboard logs digests
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "chore: agent watch digest [skip ci]"
+          git push
